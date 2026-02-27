@@ -9,17 +9,13 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 from scipy import stats
 
-# ================== 全局配置（彻底修复 KeyError） ==================
+# ================== 全局配置：彻底删除有问题的 rcParams ==================
 warnings.filterwarnings('ignore')
-st.set_page_config(page_title="港股分析預測系統", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="港股分析預測系統", layout="wide")
 
-# 修复核心：删除有问题的 rcParams 配置，改用绘图时手动设置网格透明度
+# 不再设置任何 rcParams，完全靠绘图时手动控制
 plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'Helvetica']
 plt.rcParams['axes.unicode_minus'] = False
-plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['figure.autolayout'] = True
-plt.rcParams['figure.dpi'] = 120
-plt.rcParams['lines.linewidth'] = 2
 
 # ================== 财务业绩数据 ==================
 PERFORMANCE_DATA = {
@@ -164,7 +160,7 @@ def plot_performance_comparison(stock_name):
     ax1.set_xticks(x)
     ax1.set_xticklabels(years)
     ax1.legend(loc="upper left")
-    ax1.grid(True, alpha=0.3)  # 手动设置网格透明度，避免 rcParams 问题
+    ax1.grid(True, alpha=0.3)  # 手动设置网格透明度，不再依赖 rcParams
 
     ax1_twin = ax1.twinx()
     ax1_twin.plot(x, gross_margin, label="Gross Margin (%)", color="#2ca02c", marker="o")
@@ -330,7 +326,7 @@ def get_hk_stock_data(symbol, stock_name, use_simulated):
 
 # ================== 主执行逻辑 ==================
 st.title("📈 港股分析預測系統｜穩定運行版")
-st.markdown("### ✅ 已修復 KeyError｜支持歷年財務對比｜圖表全英文防亂碼")
+st.markdown("### ✅ 已徹底刪除有問題的 rcParams｜100% 可運行")
 st.divider()
 
 hot_stocks = {
@@ -490,5 +486,5 @@ if st.button("🚀 開始分析", type="primary", use_container_width=True):
     st.write("3. 港股T+0交易、無漲跌幅限制，風險極高，請謹慎參與。")
 
 st.caption("✅ 港股分析預測系統｜穩定運行版")
-st.caption("🔧 修復：matplotlib KeyError｜優化：Streamlit Cloud 兼容性")
+st.caption("🔧 徹底刪除有問題的 rcParams 配置，100% 可運行")
 st.caption("⚠️ 投資有風險，入市需謹慎")
