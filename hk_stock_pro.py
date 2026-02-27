@@ -9,20 +9,19 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 from scipy import stats
 
-# ================== 全局配置（修复matplotlib键名错误，适配Streamlit Cloud） ==================
+# ================== 全局配置（彻底修复 KeyError） ==================
 warnings.filterwarnings('ignore')
 st.set_page_config(page_title="港股分析預測系統", layout="wide", initial_sidebar_state="collapsed")
 
-# 修复核心错误：axes.grid.alpha（无复数s），删除高版本不兼容参数
+# 修复核心：删除有问题的 rcParams 配置，改用绘图时手动设置网格透明度
 plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'Helvetica']
 plt.rcParams['axes.unicode_minus'] = False
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['figure.autolayout'] = True
 plt.rcParams['figure.dpi'] = 120
-plt.rcParams['axes.grid.alpha'] = 0.3  # 修复KeyError的核心行
 plt.rcParams['lines.linewidth'] = 2
 
-# ================== 财务业绩数据（过往年度+本年度，用于对比图表） ==================
+# ================== 财务业绩数据 ==================
 PERFORMANCE_DATA = {
     "騰訊控股 (0700)": {
         "2022": {"營收":5490.8, "淨利":1156.2, "毛利率":48.2, "淨利率":21.0, "ROE":19.8, "EPS":9.9, "股息":3.2},
@@ -56,7 +55,7 @@ PERFORMANCE_DATA = {
     }
 }
 
-# ================== 高精度模拟数据生成（修复数据提取错误，适配部署） ==================
+# ================== 高精度模拟数据生成 ==================
 def generate_simulated_data(stock_name, days=1000):
     base_price_map = {
         "騰訊控股 (0700)": 713.96,
@@ -72,13 +71,11 @@ def generate_simulated_data(stock_name, days=1000):
     base_low = base_close * 0.990
     base_volume = 1200000
 
-    # 用bdate_range生成交易日，避免索引错位
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
     dates = pd.bdate_range(start=start_date, end=end_date)
     n_days = len(dates)
 
-    # 生成低波动价格序列
     np.random.seed(42)
     price_fluct = np.random.normal(0.0001, 0.005, n_days)
     close_prices = [base_close]
@@ -88,13 +85,11 @@ def generate_simulated_data(stock_name, days=1000):
         close_prices.append(new_close)
     close_prices = np.round(close_prices, 2)
 
-    # 生成合规价格数据
     open_prices = np.round([p * np.random.uniform(0.998, 1.003) for p in close_prices], 2)
     high_prices = np.round([max(o, c) * np.random.uniform(1.000, 1.008) for o, c in zip(open_prices, close_prices)], 2)
     low_prices = np.round([min(o, c) * np.random.uniform(0.992, 1.000) for o, c in zip(open_prices, close_prices)], 2)
     volume_prices = [int(base_volume * np.random.uniform(0.8, 1.2)) for _ in range(n_days)]
 
-    # 构建DataFrame，不修改索引
     df = pd.DataFrame({
         "Date": dates,
         "Open": open_prices,
@@ -104,10 +99,8 @@ def generate_simulated_data(stock_name, days=1000):
         "Volume": volume_prices
     })
 
-    # 计算技术指标（返回副本）
     df = calculate_indicators_base(df)
 
-    # 固定腾讯核心数据
     if stock_name == "騰訊控股 (0700)":
         df.loc[df.index[-1], "Open"] = 715.50
         df.loc[df.index[-1], "High"] = 718.20
@@ -124,29 +117,26 @@ def generate_simulated_data(stock_name, days=1000):
     st.success(f"✅ 高精度模擬數據加載完成（{stock_name}）｜共 {len(df)} 條數據")
     return df
 
-# ================== 基础技术指标计算（返回副本，避免数据覆盖） ==================
+# ================== 基础技术指标计算 ==================
 def calculate_indicators_base(df):
     df_feat = df.copy()
-    # 均线计算
     df_feat["MA5"] = df_feat["Close"].rolling(window=5, min_periods=1).mean().round(2)
     df_feat["MA20"] = df_feat["Close"].rolling(window=20, min_periods=1).mean().round(2)
     df_feat["MA30"] = df_feat["Close"].rolling(window=30, min_periods=1).mean().round(2)
     df_feat["MA50"] = df_feat["Close"].rolling(window=50, min_periods=1).mean().round(2)
     df_feat["MA100"] = df_feat["Close"].rolling(window=100, min_periods=1).mean().round(2)
-    # RSI计算
     delta = df_feat["Close"].pct_change()
     gain = (delta.where(delta > 0, 0)).rolling(window=14, min_periods=1).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14, min_periods=1).mean()
     rs = gain / (loss + 1e-8)
     df_feat["RSI"] = (100 - (100 / (1 + rs))).round(1)
-    # MACD计算
     df_feat["EMA12"] = df_feat["Close"].ewm(span=12, adjust=False, min_periods=1).mean()
     df_feat["EMA26"] = df_feat["Close"].ewm(span=26, adjust=False, min_periods=1).mean()
     df_feat["MACD"] = df_feat["EMA12"] - df_feat["EMA26"]
     df_feat["MACD_Signal"] = df_feat["MACD"].ewm(span=9, adjust=False, min_periods=1).mean()
     return df_feat.fillna(0).replace([np.inf, -np.inf], 0)
 
-# ================== 财务业绩对比图表（适配Streamlit Cloud渲染） ==================
+# ================== 财务业绩对比图表 ==================
 def plot_performance_comparison(stock_name):
     if stock_name == "恆生指數 (^HSI)":
         st.info("📊 恒生指數無單獨財務業績，跳過對比圖表")
@@ -161,13 +151,11 @@ def plot_performance_comparison(stock_name):
     eps = [data[y]["EPS"] for y in years]
     dividend = [data[y]["股息"] for y in years]
 
-    # 绘制双组合图
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 10))
     fig.suptitle(f"{stock_name} - Financial Performance Comparison (2022-2024)", fontsize=18, y=0.98)
     x = np.arange(len(years))
     width = 0.35
 
-    # 子图1：营收+净利（柱状）+ 毛利率+净利率（折线）
     bars1 = ax1.bar(x - width/2, rev, width, label="Revenue (100M HKD)", color="#1f77b4", alpha=0.8)
     bars2 = ax1.bar(x + width/2, profit, width, label="Net Profit (100M HKD)", color="#ff7f0e", alpha=0.8)
     ax1.set_xlabel("Year", fontsize=12)
@@ -176,7 +164,7 @@ def plot_performance_comparison(stock_name):
     ax1.set_xticks(x)
     ax1.set_xticklabels(years)
     ax1.legend(loc="upper left")
-    ax1.grid(True, alpha=0.3)
+    ax1.grid(True, alpha=0.3)  # 手动设置网格透明度，避免 rcParams 问题
 
     ax1_twin = ax1.twinx()
     ax1_twin.plot(x, gross_margin, label="Gross Margin (%)", color="#2ca02c", marker="o")
@@ -185,7 +173,6 @@ def plot_performance_comparison(stock_name):
     ax1_twin.tick_params(axis="y", labelcolor="#2ca02c")
     ax1_twin.legend(loc="upper right")
 
-    # 子图2：ROE（折线）+ EPS+股息（柱状）
     ax2.plot(x, roe, label="ROE (%)", color="#9467bd", marker="D", linewidth=3)
     ax2.set_xlabel("Year", fontsize=12)
     ax2.set_ylabel("ROE (%)", fontsize=12, color="#9467bd")
@@ -193,7 +180,7 @@ def plot_performance_comparison(stock_name):
     ax2.set_xticks(x)
     ax2.set_xticklabels(years)
     ax2.legend(loc="upper left")
-    ax2.grid(True, alpha=0.3)
+    ax2.grid(True, alpha=0.3)  # 手动设置网格透明度
 
     ax2_twin = ax2.twinx()
     bars3 = ax2_twin.bar(x - width/2, eps, width, label="EPS (HKD)", color="#7f7f7f", alpha=0.8)
@@ -202,7 +189,6 @@ def plot_performance_comparison(stock_name):
     ax2_twin.tick_params(axis="y", labelcolor="#7f7f7f")
     ax2_twin.legend(loc="upper right")
 
-    # 数值标签
     for bars in [bars1, bars2, bars3, bars4]:
         for bar in bars:
             height = bar.get_height()
@@ -211,9 +197,9 @@ def plot_performance_comparison(stock_name):
                               f"{height:.1f}", ha="center", va="bottom", fontsize=10)
 
     plt.tight_layout()
-    st.pyplot(fig, use_container_width=True)  # 适配部署渲染
+    st.pyplot(fig, use_container_width=True)
 
-# ================== 核心工具函数（简化逻辑，提升部署稳定性） ==================
+# ================== 核心工具函数 ==================
 def get_trading_dates(start_date, days):
     return pd.bdate_range(start=start_date + timedelta(days=1), periods=days).tolist()
 
@@ -226,7 +212,7 @@ def calculate_support_resistance(df, window=20):
         resistance = 767.01
     return support, resistance
 
-# ================== 价格预测模型（锚定当前价，稳定无偏移） ==================
+# ================== 价格预测模型 ==================
 def clean_outliers(df, column="Close"):
     q1 = df[column].quantile(0.25)
     q3 = df[column].quantile(0.75)
@@ -274,17 +260,14 @@ def predict_price_optimized(df, days):
         future_X[i][feature_cols.index("day_of_week")] = (df_feat["day_of_week"].iloc[-1] + i) % 5
     future_X_scaled = scaler.transform(future_X)
 
-    # 锚定当前价，限制波动
     rf_pred = rf_model.predict(future_X_scaled)
     rf_pred = last_close + (rf_pred - rf_pred[0])
     rf_pred = np.clip(rf_pred, last_close * 0.95, last_close * 1.05)
 
-    # 双模型融合
     lr_pred, _ = predict_price_linear(df, days)
     final_pred = (0.7 * rf_pred) + (0.3 * lr_pred)
     final_pred = np.round(final_pred, 2)
 
-    # 置信区间
     pred_std = np.std([tree.predict(future_X_scaled) for tree in rf_model.estimators_], axis=0)
     conf_interval = (pred_std / pred_std.max() * last_close * 0.02).round(2)
     conf_interval = np.clip(conf_interval, 0.5, 2.0)
@@ -317,12 +300,11 @@ def backtest_model(df):
     mae = np.mean(np.abs(pred_test - test_df["Close"].values)).round(2)
     return f"📊 回測平均誤差：{mae} HKD（誤差<5為優）"
 
-# ================== 数据获取（双模式，适配部署） ==================
+# ================== 数据获取 ==================
 @st.cache_data(ttl=3600)
 def get_hk_stock_data(symbol, stock_name, use_simulated):
     if use_simulated:
         return generate_simulated_data(stock_name)
-    # 真实数据提取（部署环境兼容）
     try:
         import yfinance as yf
         yf_symbol = "^HSI" if symbol == "^HSI" else f"{symbol}.HK"
@@ -346,12 +328,11 @@ def get_hk_stock_data(symbol, stock_name, use_simulated):
         st.warning(f"⚠️ 數據異常：{str(e)[:50]}，切換模擬數據")
         return generate_simulated_data(stock_name)
 
-# ================== 主执行逻辑（简化分支，提升部署稳定性） ==================
-st.title("📈 港股分析預測系統｜部署穩定版")
-st.markdown("### ✅ 修復KeyError｜新增歷年財務業績對比｜圖表全英文防亂碼")
+# ================== 主执行逻辑 ==================
+st.title("📈 港股分析預測系統｜穩定運行版")
+st.markdown("### ✅ 已修復 KeyError｜支持歷年財務對比｜圖表全英文防亂碼")
 st.divider()
 
-# 标的选择
 hot_stocks = {
     "騰訊控股 (0700)": "0700",
     "美團-W (3690)": "3690",
@@ -372,29 +353,23 @@ default_code = hot_stocks[option]
 user_code = st.text_input("手動輸入代碼（4位）/^HSI", default_code).strip()
 st.divider()
 
-# 分析按钮逻辑
 if st.button("🚀 開始分析", type="primary", use_container_width=True):
-    # 输入验证
     if user_code != "^HSI" and (not user_code.isdigit() or len(user_code) != 4):
         st.error("❌ 港股代碼必須為4位數字，恒生指數輸入^HSI")
         st.stop()
-    # 获取数据
     df = get_hk_stock_data(user_code, option, use_simulated_data)
     if df is None or len(df) < 10:
         st.error("❌ 有效數據不足，請重試")
         st.stop()
-    # 提取核心数据
     last_close = df["Close"].iloc[-1].round(2)
     sup, res = calculate_support_resistance(df)
     ma5, ma20, ma30, ma50 = df["MA5"].iloc[-1], df["MA20"].iloc[-1], df["MA30"].iloc[-1], df["MA50"].iloc[-1]
     rsi = df["RSI"].iloc[-1]
 
-    # 1. 财务业绩对比
     st.subheader("📊 2022-2024 財務業績對比")
     plot_performance_comparison(option)
     st.divider()
 
-    # 2. 最新交易数据
     st.subheader("📋 最新10條交易數據")
     show_cols = ["Date", "Open", "High", "Low", "Close", "Volume", "MA5", "MA20", "MA30", "MA50", "RSI"]
     show_cols = [col for col in show_cols if col in df.columns]
@@ -404,7 +379,6 @@ if st.button("🚀 開始分析", type="primary", use_container_width=True):
     st.info(f"✅ 價格驗證：{option} 最新收盤價 = {last_close} HKD")
     st.divider()
 
-    # 3. 股价&均线图表
     st.subheader("📈 股價 & 均線走勢（MA5/20/30/50）")
     fig, ax = plt.subplots(figsize=(16, 6))
     ax.plot(df["Date"], df["Close"], label="Close Price", color="#1f77b4", zorder=6)
@@ -421,12 +395,11 @@ if st.button("🚀 開始分析", type="primary", use_container_width=True):
     ax.set_xlabel("Trading Date", fontsize=12)
     ax.set_ylabel("Price (HKD)", fontsize=12)
     ax.legend(loc="upper left")
-    ax.grid(True, alpha=0.3)
+    ax.grid(True, alpha=0.3)  # 手动设置网格透明度
     plt.xticks(rotation=45, ha="right")
     st.pyplot(fig, use_container_width=True)
     st.divider()
 
-    # 4. RSI图表
     st.subheader("📊 RSI 14日超買超賣指標")
     fig_r, ax_r = plt.subplots(figsize=(16, 4))
     ax_r.plot(df["Date"], df["RSI"], color="#9467bd", label="RSI 14-Day")
@@ -438,12 +411,11 @@ if st.button("🚀 開始分析", type="primary", use_container_width=True):
     ax_r.set_xlabel("Trading Date", fontsize=12)
     ax_r.set_ylabel("RSI Value", fontsize=12)
     ax_r.legend(loc="upper right")
-    ax_r.grid(True, alpha=0.3)
+    ax_r.grid(True, alpha=0.3)  # 手动设置网格透明度
     plt.xticks(rotation=45, ha="right")
     st.pyplot(fig_r, use_container_width=True)
     st.divider()
 
-    # 5. 支撑压力位&行情判断
     st.subheader("🛡️ 支撐/壓力位 & 行情判斷")
     col1, col2 = st.columns(2)
     with col1:
@@ -465,15 +437,12 @@ if st.button("🚀 開始分析", type="primary", use_container_width=True):
             st.info("🔍 均線纏繞，震盪為主")
     st.divider()
 
-    # 6. 价格预测
     st.subheader(f"🔮 未來{predict_days}天價格預測（25%置信區間）")
     pred, slope, conf_interval = predict_price_optimized(df, predict_days)
-    # 趋势判断
     trend = "📈 強勢上漲" if slope > 0.03 else "📗 弱勢上漲" if slope > 0 else "📉 強勢下跌" if slope < -0.03 else "📘 弱勢下跌" if slope < 0 else "📊 平盤震盪"
     st.success(f"趨勢判斷：{trend} | 斜率：{slope:.6f}")
     st.info(backtest_model(df))
 
-    # 预测表
     last_trading_day = df["Date"].iloc[-1]
     pred_dates = get_trading_dates(last_trading_day, predict_days)
     pred_df = pd.DataFrame({
@@ -485,7 +454,6 @@ if st.button("🚀 開始分析", type="primary", use_container_width=True):
     })
     st.dataframe(pred_df, use_container_width=True, hide_index=True)
 
-    # 预测总结
     final_pred = pred[-1]
     final_chg = round((final_pred / last_close - 1) * 100, 2)
     if final_chg > 0:
@@ -496,7 +464,6 @@ if st.button("🚀 開始分析", type="primary", use_container_width=True):
         st.info(f"📌 預測總結：平盤，最終價 {final_pred:.2f} HKD")
     st.divider()
 
-    # 7. 操作建议
     st.subheader("📌 核心指標 & 操作建議（僅供學習）")
     col_adv1, col_adv2 = st.columns(2)
     with col_adv1:
@@ -517,13 +484,11 @@ if st.button("🚀 開始分析", type="primary", use_container_width=True):
             st.info("🔍 震盪行情，等待明確信號")
     st.divider()
 
-    # 风险提示
     st.warning("⚠️ 風險提示（必看）", icon="❗")
     st.write("1. 本工具僅供學習，不構成任何投資建議；")
     st.write("2. 騰訊收盤價固定713.96 HKD，數據提取無偏差；")
     st.write("3. 港股T+0交易、無漲跌幅限制，風險極高，請謹慎參與。")
 
-# ================== 底部信息 ==================
-st.caption("✅ 港股分析預測系統｜部署穩定版")
+st.caption("✅ 港股分析預測系統｜穩定運行版")
 st.caption("🔧 修復：matplotlib KeyError｜優化：Streamlit Cloud 兼容性")
 st.caption("⚠️ 投資有風險，入市需謹慎")
