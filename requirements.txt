@@ -1,8 +1,28 @@
-# 極簡依賴列表（Streamlit Cloud安裝不超過1分鐘）
+# 核心依賴（指定版本，避免兼容問題）
 streamlit==1.35.0
 pandas==2.2.2
 numpy==1.26.4
 matplotlib==3.8.4
 yfinance==0.2.38
 scikit-learn==1.4.2
-tenacity==8.2.3  # 重試機制，應對網絡波動
+requests==2.31.0
+
+# 依賴補充
+python-dateutil>=2.8.2
+pytz>=2024.1
+six>=1.16.0streamlit
+yfinance>=0.2.31
+pandas
+numpy
+matplotlib
+scikit-learn>=1.3.0
+scipy
+requests
+
+streamlit>=1.30.0
+pandas>=2.1.0
+numpy>=1.26.0
+matplotlib>=3.8.0
+scikit-learn>=1.3.0
+scipy>=1.11.0
+yfinance>=0.2.31
